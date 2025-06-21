@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Magnet Maze - Enhanced</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  
+  <div id="ui">
+    <h1>⚡ Magnet Maze ⚡</h1>
+    <p>⭐ Stars: <span id="stars">0</span>/5</p>
+    <p>💀 Lives: <span id="lives">3</span></p>
+    <p>⏱️ Time: <span id="time">0</span>s</p>
+    <p>🔋 Energy: <span id="energy">100</span>%</p>
+  </div>
+  
+  <div id="gameOver">
+    <h2>💀 Game Over! 💀</h2>
+    <p>You ran out of lives!</p>
+    <button onclick="restartGame()">Try Again</button>
+  </div>
+  
+  <div id="victory">
+    <h2>🎉 Victory! 🎉</h2>
+    <p>Amazing! You completed the maze!</p>
+    <p>Time: <span id="finalTime"></span>s</p>
+    <button onclick="nextLevel()">Next Level</button>
+    <button onclick="restartGame()">Play Again</button>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
