@@ -1,35 +1,333 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Magnet Maze - Enhanced</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <canvas id="gameCanvas"></canvas>
-  
-  <div id="ui">
-    <h1>⚡ Magnet Maze ⚡</h1>
-    <p>⭐ Stars: <span id="stars">0</span>/5</p>
-    <p>💀 Lives: <span id="lives">3</span></p>
-    <p>⏱️ Time: <span id="time">0</span>s</p>
-    <p>🔋 Energy: <span id="energy">100</span>%</p>
-  </div>
-  
-  <div id="gameOver">
-    <h2>💀 Game Over! 💀</h2>
-    <p>You ran out of lives!</p>
-    <button onclick="restartGame()">Try Again</button>
-  </div>
-  
-  <div id="victory">
-    <h2>🎉 Victory! 🎉</h2>
-    <p>Amazing! You completed the maze!</p>
-    <p>Time: <span id="finalTime"></span>s</p>
-    <button onclick="nextLevel()">Next Level</button>
-    <button onclick="restartGame()">Play Again</button>
-  </div>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
 
-  <script src="game.js"></script>
-</body>
-</html>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: #000;
+  font-family: 'Orbitron', sans-serif;
+  color: #ffffff;
+  user-select: none;
+  height: 100vh;
+}
+
+#gameContainer {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(ellipse at center, #001a33 0%, #000511 100%);
+  cursor: crosshair;
+}
+
+/* Minimal Popup Panels */
+.popup-panel {
+  position: absolute;
+  background: rgba(0, 15, 30, 0.95);
+  border: 2px solid #00ffff;
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+  z-index: 100;
+  cursor: move;
+  transition: all 0.3s ease;
+  min-width: 200px;
+}
+
+.popup-panel.minimized {
+  width: 50px;
+  height: 50px;
+  border-radius: 25px;
+  overflow: hidden;
+}
+
+.popup-panel.minimized .panel-content {
+  display: none;
+}
+
+.popup-header {
+  padding: 8px 12px;
+  background: rgba(0, 50, 80, 0.8);
+  border-radius: 10px 10px 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: move;
+  min-height: 30px;
+}
+
+.popup-panel.minimized .popup-header {
+  border-radius: 25px;
+  padding: 10px;
+  justify-content: center;
+  text-align: center;
+}
+
+.panel-controls {
+  display: flex;
+  gap: 5px;
+}
+
+.control-btn {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
+
+.minimize-btn {
+  background: #ffaa00;
+  color: #000;
+}
+
+.close-btn {
+  background: #ff4444;
+  color: #fff;
+}
+
+.control-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+.panel-content {
+  padding: 12px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Game UI Panel */
+#gameUI {
+  top: 20px;
+  left: 20px;
+  width: 220px;
+}
+
+.ui-title {
+  font-size: 14px;
+  font-weight: 900;
+  margin-bottom: 8px;
+  color: #00ffff;
+  text-shadow: 0 0 8px #00ffff;
+  text-align: center;
+}
+
+.ui-row {
+  display: flex;
+  justify-content: space-between;
+  margin: 4px 0;
+  font-size: 11px;
+}
+
+.energy-container {
+  margin: 6px 0;
+}
+
+.energy-bar {
+  width: 100%;
+  height: 8px;
+  background: #1a1a2e;
+  border: 1px solid #00ffff;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 3px;
+}
+
+.energy-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff4444, #ffaa00, #00ff00);
+  transition: width 0.2s ease;
+  box-shadow: 0 0 6px rgba(0, 255, 0, 0.5);
+}
+
+/* Instructions Panel */
+#instructionsPanel {
+  top: 20px;
+  right: 20px;
+  width: 250px;
+  border-color: #ff00ff;
+  box-shadow: 0 0 20px rgba(255, 0, 255, 0.4);
+}
+
+.instructions-title {
+  font-size: 12px;
+  color: #ff00ff;
+  margin-bottom: 8px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.instruction-item {
+  display: flex;
+  align-items: center;
+  margin: 4px 0;
+  font-size: 10px;
+}
+
+.instruction-icon {
+  margin-right: 6px;
+  font-size: 12px;
+  width: 16px;
+}
+
+/* Show/Hide Toggle Buttons */
+.toggle-btn {
+  position: absolute;
+  z-index: 99;
+  background: rgba(0, 50, 100, 0.9);
+  border: 2px solid #00ffff;
+  border-radius: 20px;
+  padding: 8px 12px;
+  color: #00ffff;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.toggle-btn:hover {
+  background: rgba(0, 100, 150, 0.9);
+  transform: scale(1.05);
+}
+
+#toggleUI {
+  top: 10px;
+  left: 10px;
+}
+
+#toggleInstructions {
+  top: 10px;
+  right: 10px;
+}
+
+/* Hidden state */
+.popup-panel.hidden {
+  display: none;
+}
+
+/* Modal Dialogs - keeping them as they were */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 200;
+}
+
+.modal-content {
+  background: linear-gradient(135deg, #001a33, #002244);
+  padding: 40px;
+  border: 3px solid #00ffff;
+  border-radius: 20px;
+  text-align: center;
+  max-width: 500px;
+  box-shadow: 0 0 50px rgba(0, 255, 255, 0.5);
+}
+
+.modal h2 {
+  font-size: 32px;
+  margin-bottom: 20px;
+  color: #00ffff;
+  text-shadow: 0 0 15px #00ffff;
+}
+
+.modal button {
+  background: linear-gradient(45deg, #00ffff, #0088ff);
+  border: none;
+  padding: 15px 30px;
+  border-radius: 10px;
+  color: white;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  margin: 10px;
+  transition: all 0.3s ease;
+}
+
+.modal button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.6);
+}
+
+/* Game Over specific styling */
+#gameOverModal .modal-content {
+  background: linear-gradient(135deg, #330011, #440022);
+  border-color: #ff4444;
+}
+
+#gameOverModal h2 {
+  color: #ff4444;
+  text-shadow: 0 0 15px #ff4444;
+}
+
+/* Victory specific styling */
+#victoryModal .modal-content {
+  background: linear-gradient(135deg, #113300, #224400);
+  border-color: #00ff00;
+}
+
+#victoryModal h2 {
+  color: #00ff00;
+  text-shadow: 0 0 15px #00ff00;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .popup-panel {
+    width: 180px;
+    font-size: 10px;
+  }
+  
+  .popup-header {
+    font-size: 10px;
+    padding: 6px 10px;
+  }
+  
+  .panel-content {
+    padding: 8px;
+    font-size: 9px;
+  }
+}
+
+/* Dragging state */
+.popup-panel.dragging {
+  opacity: 0.8;
+  transform: scale(1.05);
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+}
+
+/* Minimized icon styling */
+.popup-panel.minimized .popup-header {
+  font-size: 20px;
+}
+
+#gameUI.minimized .popup-header::after {
+  content: "📊";
+}
+
+#instructionsPanel.minimized .popup-header::after {
+  content: "🚀";
+}

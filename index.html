@@ -2,32 +2,136 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Magnet Maze - Enhanced</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cosmic Magnet Odyssey - Space Physics Adventure</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <canvas id="gameCanvas"></canvas>
-  
-  <div id="ui">
-    <h1>⚡ Magnet Maze ⚡</h1>
-    <p>⭐ Stars: <span id="stars">0</span>/5</p>
-    <p>💀 Lives: <span id="lives">3</span></p>
-    <p>⏱️ Time: <span id="time">0</span>s</p>
-    <p>🔋 Energy: <span id="energy">100</span>%</p>
-  </div>
-  
-  <div id="gameOver">
-    <h2>💀 Game Over! 💀</h2>
-    <p>You ran out of lives!</p>
-    <button onclick="restartGame()">Try Again</button>
-  </div>
-  
-  <div id="victory">
-    <h2>🎉 Victory! 🎉</h2>
-    <p>Amazing! You completed the maze!</p>
-    <p>Time: <span id="finalTime"></span>s</p>
-    <button onclick="nextLevel()">Next Level</button>
-    <button onclick="restartGame()">Play Again</button>
+  <div id="gameContainer">
+    <canvas id="gameCanvas"></canvas>
+    
+    <!-- Toggle Buttons -->
+    <button id="toggleUI" class="toggle-btn" onclick="togglePanel('gameUI')" style="display: none;">📊 UI</button>
+    <button id="toggleInstructions" class="toggle-btn" onclick="togglePanel('instructionsPanel')" style="display: none;">🚀 Help</button>
+    
+    <!-- Movable Game UI Panel -->
+    <div id="gameUI" class="popup-panel">
+      <div class="popup-header">
+        <span>🌌 COSMIC UI</span>
+        <div class="panel-controls">
+          <button class="control-btn minimize-btn" onclick="minimizePanel('gameUI')">−</button>
+          <button class="control-btn close-btn" onclick="closePanel('gameUI')">×</button>
+        </div>
+      </div>
+      <div class="panel-content">
+        <div class="ui-title">Game Status</div>
+        <div class="ui-row">
+          <span>Level:</span>
+          <span id="level">1</span>
+        </div>
+        <div class="ui-row">
+          <span>Stars:</span>
+          <span><span id="stars">0</span>/<span id="totalStars">5</span></span>
+        </div>
+        <div class="ui-row">
+          <span>Score:</span>
+          <span id="score">0</span>
+        </div>
+        <div class="ui-row">
+          <span>Lives:</span>
+          <span id="lives">3</span> ❤️
+        </div>
+        <div class="energy-container">
+          <div class="ui-row">
+            <span>Energy:</span>
+            <span id="energyPercent">100%</span>
+          </div>
+          <div class="energy-bar">
+            <div class="energy-fill" id="energyFill"></div>
+          </div>
+        </div>
+        <div class="ui-row">
+          <span>Power-Up:</span>
+          <span id="powerUpStatus">None</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Movable Instructions Panel -->
+    <div id="instructionsPanel" class="popup-panel">
+      <div class="popup-header">
+        <span>🚀 CONTROLS</span>
+        <div class="panel-controls">
+          <button class="control-btn minimize-btn" onclick="minimizePanel('instructionsPanel')">−</button>
+          <button class="control-btn close-btn" onclick="closePanel('instructionsPanel')">×</button>
+        </div>
+      </div>
+      <div class="panel-content">
+        <div class="instructions-title">Mission Guide</div>
+        <div class="instruction-item">
+          <span class="instruction-icon">🖱️</span>
+          <span>Click & Hold: Magnetic field</span>
+        </div>
+        <div class="instruction-item">
+          <span class="instruction-icon">⚡</span>
+          <span>Energy: Depletes during use</span>
+        </div>
+        <div class="instruction-item">
+          <span class="instruction-icon">⭐</span>
+          <span>Stars: Collect to unlock portal</span>
+        </div>
+        <div class="instruction-item">
+          <span class="instruction-icon">🛡️</span>
+          <span>Walls: Magnetic boundaries</span>
+        </div>
+        <div class="instruction-item">
+          <span class="instruction-icon">⚠️</span>
+          <span>Spikes: Avoid damage</span>
+        </div>
+        <div class="instruction-item">
+          <span class="instruction-icon">🌀</span>
+          <span>Portals: Teleport points</span>
+        </div>
+        <div class="instruction-item">
+          <span class="instruction-icon">🎁</span>
+          <span>Power-Ups: Special abilities</span>
+        </div>
+        <div class="instruction-item">
+          <span class="instruction-icon">🎯</span>
+          <span>Goal: Reach the portal!</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Dialogs -->
+    <div id="levelCompleteModal" class="modal">
+      <div class="modal-content">
+        <h2>🌟 Level Complete!</h2>
+        <p>Stars Collected: <span id="finalStars"></span></p>
+        <p>Bonus Score: <span id="bonusScore"></span></p>
+        <button onclick="nextLevel()">Continue to Next Level</button>
+      </div>
+    </div>
+
+    <div id="gameOverModal" class="modal">
+      <div class="modal-content">
+        <h2>💥 Mission Failed</h2>
+        <p>Your spacecraft was destroyed in the cosmic void.</p>
+        <p>Final Score: <span id="finalScore"></span></p>
+        <p>Levels Completed: <span id="levelsCompleted"></span></p>
+        <button onclick="restartGame()">Restart Mission</button>
+      </div>
+    </div>
+
+    <div id="victoryModal" class="modal">
+      <div class="modal-content">
+        <h2>🏆 Cosmic Victory!</h2>
+        <p>You have mastered the magnetic fields of space!</p>
+        <p>Total Score: <span id="totalScore"></span></p>
+        <p>Perfect Navigation Achievement Unlocked!</p>
+        <button onclick="restartGame()">New Cosmic Journey</button>
+      </div>
+    </div>
   </div>
 
   <script src="game.js"></script>

@@ -1,976 +1,1416 @@
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+// Panel Management System
+class PanelManager {
+  constructor() {
+    this.panels = {};
+    this.dragging = null;
+    this.offset = { x: 0, y: 0 };
+    this.setupDragAndDrop();
+  }
 
-const WIDTH = canvas.width;
-const HEIGHT = canvas.height;
+  setupDragAndDrop() {
+    document.addEventListener('mousedown', this.handleMouseDown.bind(this));
+    document.addEventListener('mousemove', this.handleMouseMove.bind(this));
+    document.addEventListener('mouseup', this.handleMouseUp.bind(this));
+    
+    // Touch events for mobile
+    document.addEventListener('touchstart', this.handleTouchStart.bind(this));
+    document.addEventListener('touchmove', this.handleTouchMove.bind(this));
+    document.addEventListener('touchend', this.handleTouchEnd.bind(this));
+  }
 
-// Game state
-let gameState = 'playing'; // 'playing', 'gameOver', 'victory'
-let level = 1;
-let lives = 3;
-let energy = 100;
-let gameTime = 0;
-let lastTime = Date.now();
+  handleMouseDown(e) {
+    const panel = e.target.closest('.popup-panel');
+    if (!panel || !e.target.closest('.popup-header')) return;
+    
+    if (e.target.closest('.control-btn')) return; // Don't drag when clicking control buttons
+    
+    this.startDrag(panel, e.clientX, e.clientY);
+  }
 
-// Enhanced ball with more properties
-let ball = {
-  x: 80, y: 80,
-  vx: 0, vy: 0,
-  radius: 14,
-  color: "#e0e0e0",
-  trail: [],
-  magnetized: false,
-  invulnerable: 0,
-  metallic: true,
-  charge: 0
-};
+  handleTouchStart(e) {
+    const panel = e.target.closest('.popup-panel');
+    if (!panel || !e.target.closest('.popup-header')) return;
+    
+    if (e.target.closest('.control-btn')) return;
+    
+    const touch = e.touches[0];
+    this.startDrag(panel, touch.clientX, touch.clientY);
+    e.preventDefault();
+  }
 
-// Enhanced stars with power-ups
-let stars = [
-  { x: 300, y: 150, collected: false, type: 'speed', color: '#ffff00' },
-  { x: 500, y: 300, collected: false, type: 'shield', color: '#00ffff' },
-  { x: 700, y: 200, collected: false, type: 'energy', color: '#ff00ff' },
-  { x: 400, y: 450, collected: false, type: 'magnet', color: '#ff8800' },
-  { x: 600, y: 100, collected: false, type: 'normal', color: '#ffff00' }
-];
+  startDrag(panel, x, y) {
+    this.dragging = panel;
+    const rect = panel.getBoundingClientRect();
+    this.offset.x = x - rect.left;
+    this.offset.y = y - rect.top;
+    
+    panel.classList.add('dragging');
+    panel.style.zIndex = '150';
+  }
 
-let goal = { x: 750, y: 450, radius: 25, pulse: 0 };
+  handleMouseMove(e) {
+    if (!this.dragging) return;
+    this.updatePosition(e.clientX, e.clientY);
+  }
 
-// Enhanced walls with different types
-let walls = [
-  { x: 200, y: 100, w: 300, h: 20, type: 'normal' },
-  { x: 200, y: 200, w: 20, h: 200, type: 'normal' },
-  { x: 300, y: 300, w: 200, h: 20, type: 'normal' },
-  { x: 550, y: 150, w: 20, h: 200, type: 'normal' },
-  { x: 100, y: 350, w: 150, h: 20, type: 'magnetic' },
-  { x: 650, y: 300, w: 20, h: 100, type: 'repulsive' }
-];
+  handleTouchMove(e) {
+    if (!this.dragging) return;
+    const touch = e.touches[0];
+    this.updatePosition(touch.clientX, touch.clientY);
+    e.preventDefault();
+  }
 
-// Deadly spikes
-let spikes = [
-  { x: 400, y: 250, radius: 15, damage: 1 },
-  { x: 350, y: 400, radius: 15, damage: 1 },
-  { x: 600, y: 350, radius: 15, damage: 1 }
-];
+  updatePosition(x, y) {
+    const newX = Math.max(0, Math.min(window.innerWidth - this.dragging.offsetWidth, x - this.offset.x));
+    const newY = Math.max(0, Math.min(window.innerHeight - this.dragging.offsetHeight, y - this.offset.y));
+    
+    this.dragging.style.left = newX + 'px';
+    this.dragging.style.top = newY + 'px';
+  }
 
-// Moving obstacles
-let movingObstacles = [
-  { x: 450, y: 180, vx: 2, vy: 0, w: 80, h: 15, range: 100, startX: 450 }
-];
+  handleMouseUp() {
+    this.endDrag();
+  }
 
-// Particle systems
-let particles = [];
-let sparks = [];
-let energyOrbs = [];
+  handleTouchEnd() {
+    this.endDrag();
+  }
 
-// Mouse/touch control
-let mouse = { x: 0, y: 0, active: false, magnetStrength: 1 };
-let collectedCount = 0;
-
-// Power-ups
-let powerUps = {
-  speedBoost: 0,
-  shield: 0,
-  energyBoost: false,
-  superMagnet: 0
-};
-
-// Event listeners
-document.addEventListener("mousedown", handleMouseDown);
-document.addEventListener("mouseup", handleMouseUp);
-document.addEventListener("mousemove", handleMouseMove);
-document.addEventListener("touchstart", handleTouchStart);
-document.addEventListener("touchend", handleTouchEnd);
-document.addEventListener("touchmove", handleTouchMove);
-
-function handleMouseDown(e) {
-  if (gameState !== 'playing') return;
-  mouse.x = e.clientX;
-  mouse.y = e.clientY;
-  mouse.active = true;
-  activateMagnet();
+  endDrag() {
+    if (!this.dragging) return;
+    
+    this.dragging.classList.remove('dragging');
+    this.dragging.style.zIndex = '100';
+    this.dragging = null;
+  }
 }
 
-function handleMouseUp() {
-  mouse.active = false;
+// Panel control functions
+function minimizePanel(panelId) {
+  const panel = document.getElementById(panelId);
+  panel.classList.toggle('minimized');
 }
 
-function handleMouseMove(e) {
-  mouse.x = e.clientX;
-  mouse.y = e.clientY;
-}
-
-function handleTouchStart(e) {
-  e.preventDefault();
-  if (gameState !== 'playing') return;
-  const touch = e.touches[0];
-  mouse.x = touch.clientX;
-  mouse.y = touch.clientY;
-  mouse.active = true;
-  activateMagnet();
-}
-
-function handleTouchEnd(e) {
-  e.preventDefault();
-  mouse.active = false;
-}
-
-function handleTouchMove(e) {
-  e.preventDefault();
-  const touch = e.touches[0];
-  mouse.x = touch.clientX;
-  mouse.y = touch.clientY;
-}
-
-function activateMagnet() {
-  if (energy <= 0) return;
+function closePanel(panelId) {
+  const panel = document.getElementById(panelId);
+  const toggleBtn = document.getElementById(panelId === 'gameUI' ? 'toggleUI' : 'toggleInstructions');
   
-  // Create energy orbs around mouse
-  for (let i = 0; i < 8; i++) {
-    energyOrbs.push({
-      x: mouse.x + Math.cos(i * Math.PI / 4) * 30,
-      y: mouse.y + Math.sin(i * Math.PI / 4) * 30,
-      angle: i * Math.PI / 4,
-      life: 20,
-      radius: 3
-    });
-  }
+  panel.classList.add('hidden');
+  toggleBtn.style.display = 'block';
 }
 
-function updateGameTime() {
-  const now = Date.now();
-  if (gameState === 'playing') {
-    gameTime += (now - lastTime) / 1000;
-    document.getElementById('time').textContent = Math.floor(gameTime);
-  }
-  lastTime = now;
+function togglePanel(panelId) {
+  const panel = document.getElementById(panelId);
+  const toggleBtn = document.getElementById(panelId === 'gameUI' ? 'toggleUI' : 'toggleInstructions');
+  
+  panel.classList.remove('hidden');
+  panel.classList.remove('minimized');
+  toggleBtn.style.display = 'none';
 }
 
-function drawBall() {
-  // Ball trail
-  ctx.strokeStyle = "rgba(224, 224, 224, 0.3)";
-  ctx.lineWidth = ball.radius / 2;
-  ctx.beginPath();
-  for (let i = 1; i < ball.trail.length; i++) {
-    const alpha = i / ball.trail.length;
-    ctx.globalAlpha = alpha * 0.5;
-    ctx.moveTo(ball.trail[i-1].x, ball.trail[i-1].y);
-    ctx.lineTo(ball.trail[i].x, ball.trail[i].y);
-  }
-  ctx.stroke();
-  ctx.globalAlpha = 1;
+// Initialize panel manager
+const panelManager = new PanelManager();
 
-  // Ball glow effect
-  if (ball.invulnerable > 0) {
-    const glowRadius = ball.radius + 10 + Math.sin(Date.now() / 100) * 5;
-    const gradient = ctx.createRadialGradient(ball.x, ball.y, 0, ball.x, ball.y, glowRadius);
-    gradient.addColorStop(0, "rgba(0, 255, 255, 0.6)");
-    gradient.addColorStop(1, "rgba(0, 255, 255, 0)");
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(ball.x, ball.y, glowRadius, 0, Math.PI * 2);
-    ctx.fill();
+// Game Core System (keeping the same game logic)
+class CosmicGame {
+  constructor() {
+    this.canvas = document.getElementById('gameCanvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.setupCanvas();
+    this.initializeGame();
+    this.setupEventListeners();
+    this.audioContext = null;
+    this.initAudio();
   }
 
-  // Main ball
-  const gradient = ctx.createRadialGradient(
-    ball.x - ball.radius/3, ball.y - ball.radius/3, 0,
-    ball.x, ball.y, ball.radius
-  );
-  gradient.addColorStop(0, "#ffffff");
-  gradient.addColorStop(0.3, ball.color);
-  gradient.addColorStop(1, "#666666");
-  
-  ctx.beginPath();
-  ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-  ctx.fillStyle = gradient;
-  ctx.fill();
-  
-  // Metallic rim
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 2;
-  ctx.stroke();
+  setupCanvas() {
+    const resizeCanvas = () => {
+      this.canvas.width = window.innerWidth;
+      this.canvas.height = window.innerHeight;
+      this.WIDTH = this.canvas.width;
+      this.HEIGHT = this.canvas.height;
+    };
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+  }
 
-  // Magnetic field visualization when charged
-  if (ball.charge > 0) {
-    ctx.strokeStyle = `rgba(0, 255, 255, ${ball.charge})`;
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 6; i++) {
-      const angle = (Date.now() / 500 + i * Math.PI / 3) % (Math.PI * 2);
-      const x1 = ball.x + Math.cos(angle) * (ball.radius + 5);
-      const y1 = ball.y + Math.sin(angle) * (ball.radius + 5);
-      const x2 = ball.x + Math.cos(angle) * (ball.radius + 15);
-      const y2 = ball.y + Math.sin(angle) * (ball.radius + 15);
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
+  initializeGame() {
+    this.currentLevel = 1;
+    this.score = 0;
+    this.lives = 3;
+    this.energy = 100;
+    this.maxEnergy = 100;
+    this.gameState = 'playing';
+    this.powerUp = null;
+    this.mouse = { x: 0, y: 0, active: false };
+    this.particles = [];
+    this.backgroundStars = this.generateBackgroundStars();
+    this.loadLevel(this.currentLevel);
+  }
+
+  initAudio() {
+    try {
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {
+      console.warn('Audio not supported');
     }
   }
-}
 
-function drawGoal() {
-  goal.pulse += 0.1;
-  const pulseRadius = goal.radius + Math.sin(goal.pulse) * 5;
-  
-  // Goal glow
-  const gradient = ctx.createRadialGradient(goal.x, goal.y, 0, goal.x, goal.y, pulseRadius + 20);
-  gradient.addColorStop(0, "rgba(0, 255, 0, 0.8)");
-  gradient.addColorStop(0.5, "rgba(0, 255, 0, 0.3)");
-  gradient.addColorStop(1, "rgba(0, 255, 0, 0)");
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(goal.x, goal.y, pulseRadius + 20, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Main goal
-  ctx.beginPath();
-  ctx.arc(goal.x, goal.y, pulseRadius, 0, Math.PI * 2);
-  ctx.fillStyle = "#00ff00";
-  ctx.fill();
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 3;
-  ctx.stroke();
-
-  // Goal particles
-  if (Math.random() < 0.3) {
-    particles.push({
-      x: goal.x + (Math.random() - 0.5) * goal.radius,
-      y: goal.y + (Math.random() - 0.5) * goal.radius,
-      vx: (Math.random() - 0.5) * 2,
-      vy: (Math.random() - 0.5) * 2,
-      life: 60,
-      color: "#00ff00",
-      size: 2
-    });
+  // Enhanced Ball Physics (Zero Gravity)
+  initializeBall() {
+    this.ball = {
+      x: 80,
+      y: 80,
+      vx: 0,
+      vy: 0,
+      radius: 14,
+      mass: 1,
+      trail: [],
+      maxTrailLength: 25,
+      magnetized: false,
+      invulnerable: 0,
+      color: '#00ccff',
+      glowIntensity: 0
+    };
   }
-}
 
-function drawWalls() {
-  for (let w of walls) {
-    switch (w.type) {
-      case 'magnetic':
-        // Magnetic walls - blue
-        const magGradient = ctx.createLinearGradient(w.x, w.y, w.x + w.w, w.y + w.h);
-        magGradient.addColorStop(0, "#0066ff");
-        magGradient.addColorStop(1, "#003399");
-        ctx.fillStyle = magGradient;
-        break;
-      case 'repulsive':
-        // Repulsive walls - red
-        const repGradient = ctx.createLinearGradient(w.x, w.y, w.x + w.w, w.y + w.h);
-        repGradient.addColorStop(0, "#ff6600");
-        repGradient.addColorStop(1, "#cc3300");
-        ctx.fillStyle = repGradient;
-        break;
-      default:
-        ctx.fillStyle = "#444444";
+  // Advanced Level System
+  generateLevel(levelNum) {
+    const difficulty = Math.min(levelNum * 0.3, 3);
+    const starCount = Math.min(5 + Math.floor(levelNum / 3), 8);
+    
+    const level = {
+      stars: [],
+      goal: { 
+        x: this.WIDTH - 100, 
+        y: this.HEIGHT - 100, 
+        radius: 35,
+        active: false,
+        pulsePhase: 0
+      },
+      walls: [],
+      spikes: [],
+      blackHoles: [],
+      movingPlatforms: [],
+      teleporters: [],
+      powerUps: [],
+      magneticFields: []
+    };
+
+    // Generate stars in safe positions
+    for (let i = 0; i < starCount; i++) {
+      let attempts = 0;
+      let validPosition = false;
+      let star;
+      
+      while (!validPosition && attempts < 50) {
+        star = {
+          x: 150 + Math.random() * (this.WIDTH - 300),
+          y: 150 + Math.random() * (this.HEIGHT - 300),
+          collected: false,
+          rotation: Math.random() * Math.PI * 2,
+          pulsePhase: Math.random() * Math.PI * 2
+        };
+        
+        validPosition = this.isValidPosition(star.x, star.y, 50);
+        attempts++;
+      }
+      
+      if (validPosition) level.stars.push(star);
+    }
+
+    // Generate walls with improved layouts
+    this.generateWalls(level, difficulty);
+    
+    // Generate hazards
+    this.generateHazards(level, difficulty);
+    
+    // Generate power-ups
+    this.generatePowerUps(level, levelNum);
+    
+    // Add special features for higher levels
+    if (levelNum > 3) {
+      this.generateTeleporters(level);
     }
     
-    ctx.fillRect(w.x, w.y, w.w, w.h);
-    
-    // Wall highlight
-    ctx.strokeStyle = "#666666";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(w.x, w.y, w.w, w.h);
-  }
-}
-
-function drawSpikes() {
-  for (let spike of spikes) {
-    // Spike danger aura
-    const gradient = ctx.createRadialGradient(spike.x, spike.y, 0, spike.x, spike.y, spike.radius + 10);
-    gradient.addColorStop(0, "rgba(255, 0, 0, 0.6)");
-    gradient.addColorStop(1, "rgba(255, 0, 0, 0)");
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(spike.x, spike.y, spike.radius + 10, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Spike body
-    ctx.fillStyle = "#ff0000";
-    ctx.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const angle = (i * Math.PI / 4);
-      const x = spike.x + Math.cos(angle) * spike.radius;
-      const y = spike.y + Math.sin(angle) * spike.radius;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+    if (levelNum > 5) {
+      this.generateBlackHoles(level, difficulty);
     }
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-}
 
-function drawMovingObstacles() {
-  for (let obs of movingObstacles) {
-    // Moving obstacle with electric effect
-    const gradient = ctx.createLinearGradient(obs.x, obs.y, obs.x + obs.w, obs.y + obs.h);
-    gradient.addColorStop(0, "#ffff00");
-    gradient.addColorStop(0.5, "#ffaa00");
-    gradient.addColorStop(1, "#ff6600");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+    return level;
+  }
+
+  generateWalls(level, difficulty) {
+    const wallCount = 4 + Math.floor(difficulty * 2);
     
-    // Electric sparks
-    if (Math.random() < 0.2) {
-      sparks.push({
-        x: obs.x + Math.random() * obs.w,
-        y: obs.y + Math.random() * obs.h,
-        vx: (Math.random() - 0.5) * 4,
-        vy: (Math.random() - 0.5) * 4,
-        life: 15,
-        color: "#ffff00"
+    for (let i = 0; i < wallCount; i++) {
+      const isVertical = Math.random() > 0.5;
+      const wall = {
+        x: 100 + Math.random() * (this.WIDTH - 400),
+        y: 100 + Math.random() * (this.HEIGHT - 400),
+        w: isVertical ? 25 : 80 + Math.random() * 120,
+        h: isVertical ? 80 + Math.random() * 120 : 25,
+        type: Math.random() > 0.7 ? 'magnetic' : 'normal'
+      };
+      
+      if (this.isValidPosition(wall.x + wall.w/2, wall.y + wall.h/2, 60)) {
+        level.walls.push(wall);
+      }
+    }
+  }
+
+  generateHazards(level, difficulty) {
+    const spikeCount = Math.floor(2 + difficulty * 2);
+    
+    for (let i = 0; i < spikeCount; i++) {
+      const spike = {
+        x: 200 + Math.random() * (this.WIDTH - 400),
+        y: 200 + Math.random() * (this.HEIGHT - 400),
+        size: 18 + Math.random() * 8,
+        rotation: Math.random() * Math.PI * 2
+      };
+      
+      if (this.isValidPosition(spike.x, spike.y, 80)) {
+        level.spikes.push(spike);
+      }
+    }
+  }
+
+  generatePowerUps(level, levelNum) {
+    const powerUpTypes = ['energy', 'speed', 'shield', 'magnet_boost'];
+    const count = Math.min(1 + Math.floor(levelNum / 4), 3);
+    
+    for (let i = 0; i < count; i++) {
+      const powerUp = {
+        x: 150 + Math.random() * (this.WIDTH - 300),
+        y: 150 + Math.random() * (this.HEIGHT - 300),
+        type: powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)],
+        active: true,
+        rotation: 0,
+        pulsePhase: Math.random() * Math.PI * 2
+      };
+      
+      if (this.isValidPosition(powerUp.x, powerUp.y, 60)) {
+        level.powerUps.push(powerUp);
+      }
+    }
+  }
+
+  generateTeleporters(level) {
+    if (Math.random() > 0.6) {
+      const teleporter1 = {
+        x: 120 + Math.random() * 200,
+        y: 120 + Math.random() * 200,
+        radius: 25,
+        targetX: this.WIDTH - 320 + Math.random() * 200,
+        targetY: this.HEIGHT - 320 + Math.random() * 200,
+        color: '#ff00ff',
+        pulsePhase: 0
+      };
+      
+      const teleporter2 = {
+        x: teleporter1.targetX,
+        y: teleporter1.targetY,
+        radius: 25,
+        targetX: teleporter1.x,
+        targetY: teleporter1.y,
+        color: '#ff00ff',
+        pulsePhase: Math.PI
+      };
+      
+      level.teleporters.push(teleporter1, teleporter2);
+    }
+  }
+
+  generateBlackHoles(level, difficulty) {
+    const count = Math.floor(difficulty / 2);
+    
+    for (let i = 0; i < count; i++) {
+      const blackHole = {
+        x: 250 + Math.random() * (this.WIDTH - 500),
+        y: 250 + Math.random() * (this.HEIGHT - 500),
+        radius: 40,
+        strength: 0.3 + difficulty * 0.1,
+        rotation: 0
+      };
+      
+      if (this.isValidPosition(blackHole.x, blackHole.y, 120)) {
+        level.blackHoles.push(blackHole);
+      }
+    }
+  }
+
+  generateBackgroundStars() {
+    const stars = [];
+    for (let i = 0; i < 150; i++) {
+      stars.push({
+        x: Math.random() * this.WIDTH,
+        y: Math.random() * this.HEIGHT,
+        size: Math.random() * 3 + 0.5,
+        brightness: Math.random(),
+        twinkleSpeed: 0.5 + Math.random() * 2
       });
     }
+    return stars;
   }
-}
 
-function drawStars() {
-  for (let star of stars) {
-    if (star.collected) continue;
+  isValidPosition(x, y, minDistance) {
+    const startDistance = Math.hypot(x - 80, y - 80);
+    const goalDistance = Math.hypot(x - (this.WIDTH - 100), y - (this.HEIGHT - 100));
     
-    // Star glow
-    const gradient = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, 20);
-    gradient.addColorStop(0, star.color + "80");
-    gradient.addColorStop(1, star.color + "00");
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(star.x, star.y, 20, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Star shape
-    ctx.save();
-    ctx.translate(star.x, star.y);
-    ctx.rotate(Date.now() / 1000);
-    ctx.beginPath();
-    for (let i = 0; i < 5; i++) {
-      const angle = (i * 4 * Math.PI) / 5;
-      const x = Math.cos(angle) * (i % 2 === 0 ? 12 : 6);
-      const y = Math.sin(angle) * (i % 2 === 0 ? 12 : 6);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-    ctx.fillStyle = star.color;
-    ctx.fill();
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.restore();
-
-    // Power-up indicator
-    if (star.type !== 'normal') {
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "12px Arial";
-      ctx.textAlign = "center";
-      const typeSymbols = {
-        'speed': '⚡',
-        'shield': '🛡️',
-        'energy': '🔋',
-        'magnet': '🧲'
-      };
-      ctx.fillText(typeSymbols[star.type] || '⭐', star.x, star.y - 20);
-    }
+    return startDistance > minDistance && goalDistance > minDistance;
   }
-}
 
-function drawMagnetField() {
-  if (!mouse.active || energy <= 0) return;
-  
-  const fieldStrength = Math.min(energy / 100, 1) * mouse.magnetStrength;
-  const pulseSize = 60 + Math.sin(Date.now() / 150) * 15;
-  
-  // Main magnetic field
-  const gradient = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, pulseSize);
-  gradient.addColorStop(0, `rgba(0, 255, 255, ${0.4 * fieldStrength})`);
-  gradient.addColorStop(0.5, `rgba(0, 255, 255, ${0.2 * fieldStrength})`);
-  gradient.addColorStop(1, "rgba(0, 255, 255, 0)");
-  
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(mouse.x, mouse.y, pulseSize, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Magnetic field lines
-  ctx.strokeStyle = `rgba(0, 255, 255, ${0.6 * fieldStrength})`;
-  ctx.lineWidth = 2;
-  for (let i = 0; i < 8; i++) {
-    const angle = (Date.now() / 500 + i * Math.PI / 4) % (Math.PI * 2);
-    ctx.beginPath();
-    ctx.arc(mouse.x, mouse.y, pulseSize * 0.7, angle, angle + Math.PI / 6);
-    ctx.stroke();
+  loadLevel(levelNum) {
+    this.currentLevel = levelNum;
+    this.level = this.generateLevel(levelNum);
+    this.initializeBall();
+    this.collectedStars = 0;
+    this.gameState = 'playing';
+    this.updateUI();
+    this.playSound(1000, 0.3, 'sine');
   }
-}
 
-function updateBall() {
-  // Magnetic attraction
-  if (mouse.active && energy > 0) {
-    const dx = mouse.x - ball.x;
-    const dy = mouse.y - ball.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const maxDist = 200;
+  // Enhanced Physics System
+  updateBall() {
+    if (this.gameState !== 'playing') return;
+
+    // Magnetic field interaction (replaces gravity)
+    if (this.mouse.active && this.energy > 0) {
+      const dx = this.mouse.x - this.ball.x;
+      const dy = this.mouse.y - this.ball.y;
+      const distance = Math.hypot(dx, dy);
+      
+      if (distance > 5) {
+        const magneticForce = Math.min(0.6 / (distance * 0.01 + 1), 3.0);
+        const powerMultiplier = this.powerUp?.type === 'magnet_boost' ? 1.8 : 1;
+        
+        this.ball.vx += (dx / distance) * magneticForce * powerMultiplier;
+        this.ball.vy += (dy / distance) * magneticForce * powerMultiplier;
+        
+        this.ball.magnetized = true;
+        this.ball.glowIntensity = Math.min(this.ball.glowIntensity + 0.1, 1);
+        
+        const energyDrain = (this.powerUp?.type === 'energy' ? 0.4 : 0.8);
+        this.energy -= energyDrain;
+        
+        this.createMagnetParticles();
+      }
+    } else {
+      this.ball.magnetized = false;
+      this.ball.glowIntensity = Math.max(this.ball.glowIntensity - 0.05, 0);
+      this.energy = Math.min(this.energy + 0.5, this.maxEnergy);
+    }
+
+    // Black hole gravitational effects
+    for (let blackHole of this.level.blackHoles) {
+      const dx = blackHole.x - this.ball.x;
+      const dy = blackHole.y - this.ball.y;
+      const distance = Math.hypot(dx, dy);
+      
+      if (distance < 200) {
+        const force = blackHole.strength / (distance * 0.01 + 1);
+        this.ball.vx += (dx / distance) * force * 0.3;
+        this.ball.vy += (dy / distance) * force * 0.3;
+      }
+    }
+
+    // Space friction and velocity limiting
+    const maxVelocity = this.powerUp?.type === 'speed' ? 15 : 10;
+    const friction = 0.994; // Very low friction for space
     
-    if (dist < maxDist && dist > 0) {
-      const basePull = 0.25; // Reduced base pull
-      const magnetBonus = powerUps.superMagnet > 0 ? 0.1 : 0; // 10% bonus when active
-      const pull = (basePull + magnetBonus) * (1 - dist / maxDist);
+    this.ball.vx *= friction;
+    this.ball.vy *= friction;
+    
+    const velocity = Math.hypot(this.ball.vx, this.ball.vy);
+    if (velocity > maxVelocity) {
+      this.ball.vx = (this.ball.vx / velocity) * maxVelocity;
+      this.ball.vy = (this.ball.vy / velocity) * maxVelocity;
+    }
+
+    // Position update
+    this.ball.x += this.ball.vx;
+    this.ball.y += this.ball.vy;
+
+    // Boundary collisions with energy loss
+    this.handleBoundaryCollisions();
+    
+    // Game object interactions
+    this.checkCollisions();
+    
+    // Update trail
+    this.updateTrail();
+    
+    // Update invulnerability
+    if (this.ball.invulnerable > 0) this.ball.invulnerable--;
+    
+    // Update power-up duration
+    if (this.powerUp) {
+      this.powerUp.duration--;
+      if (this.powerUp.duration <= 0) {
+        this.powerUp = null;
+        this.updateUI();
+      }
+    }
+  }
+
+  handleBoundaryCollisions() {
+    const restitution = 0.7;
+    
+    if (this.ball.x <= this.ball.radius) {
+      this.ball.x = this.ball.radius;
+      this.ball.vx = Math.abs(this.ball.vx) * restitution;
+      this.createImpactParticles(this.ball.x, this.ball.y, '#00ccff');
+    }
+    if (this.ball.x >= this.WIDTH - this.ball.radius) {
+      this.ball.x = this.WIDTH - this.ball.radius;
+      this.ball.vx = -Math.abs(this.ball.vx) * restitution;
+      this.createImpactParticles(this.ball.x, this.ball.y, '#00ccff');
+    }
+    if (this.ball.y <= this.ball.radius) {
+      this.ball.y = this.ball.radius;
+      this.ball.vy = Math.abs(this.ball.vy) * restitution;
+      this.createImpactParticles(this.ball.x, this.ball.y, '#00ccff');
+    }
+    if (this.ball.y >= this.HEIGHT - this.ball.radius) {
+      this.ball.y = this.HEIGHT - this.ball.radius;
+      this.ball.vy = -Math.abs(this.ball.vy) * restitution;
+      this.createImpactParticles(this.ball.x, this.ball.y, '#00ccff');
+    }
+  }
+
+  updateTrail() {
+    this.ball.trail.push({ x: this.ball.x, y: this.ball.y });
+    if (this.ball.trail.length > this.ball.maxTrailLength) {
+      this.ball.trail.shift();
+    }
+  }
+
+  // Enhanced Collision System
+  checkCollisions() {
+    this.checkWallCollisions();
+    this.checkSpikeCollisions();
+    this.checkBlackHoleCollisions();
+    this.checkTeleporterCollisions();
+    this.checkStarCollisions();
+    this.checkGoalCollision();
+    this.checkPowerUpCollisions();
+  }
+
+  checkWallCollisions() {
+    for (let wall of this.level.walls) {
+      if (this.ball.x + this.ball.radius > wall.x &&
+          this.ball.x - this.ball.radius < wall.x + wall.w &&
+          this.ball.y + this.ball.radius > wall.y &&
+          this.ball.y - this.ball.radius < wall.y + wall.h) {
+        
+        const centerX = wall.x + wall.w / 2;
+        const centerY = wall.y + wall.h / 2;
+        const dx = this.ball.x - centerX;
+        const dy = this.ball.y - centerY;
+        
+        const restitution = wall.type === 'magnetic' ? 1.1 : 0.8;
+        
+        if (Math.abs(dx) > Math.abs(dy)) {
+          this.ball.vx *= -restitution;
+          this.ball.x = dx > 0 ? wall.x + wall.w + this.ball.radius : wall.x - this.ball.radius;
+        } else {
+          this.ball.vy *= -restitution;
+          this.ball.y = dy > 0 ? wall.y + wall.h + this.ball.radius : wall.y - this.ball.radius;
+        }
+        
+        const color = wall.type === 'magnetic' ? '#00ffff' : '#ffffff';
+        this.createImpactParticles(this.ball.x, this.ball.y, color);
+        this.playSound(wall.type === 'magnetic' ? 800 : 500, 0.15);
+      }
+    }
+  }
+
+  checkSpikeCollisions() {
+    if (this.ball.invulnerable > 0 || (this.powerUp?.type === 'shield')) return;
+    
+    for (let spike of this.level.spikes) {
+      const distance = Math.hypot(this.ball.x - spike.x, this.ball.y - spike.y);
+      if (distance < this.ball.radius + spike.size) {
+        this.loseLife();
+        return;
+      }
+    }
+  }
+
+  checkBlackHoleCollisions() {
+    if (this.ball.invulnerable > 0 || (this.powerUp?.type === 'shield')) return;
+    
+    for (let blackHole of this.level.blackHoles) {
+      const distance = Math.hypot(this.ball.x - blackHole.x, this.ball.y - blackHole.y);
+      if (distance < blackHole.radius) {
+        this.loseLife();
+        this.createBlackHoleEffect(blackHole.x, blackHole.y);
+        return;
+      }
+    }
+  }
+
+  checkTeleporterCollisions() {
+    for (let teleporter of this.level.teleporters) {
+      const distance = Math.hypot(this.ball.x - teleporter.x, this.ball.y - teleporter.y);
+      if (distance < this.ball.radius + teleporter.radius) {
+        this.ball.x = teleporter.targetX;
+        this.ball.y = teleporter.targetY;
+        this.ball.vx *= 0.6;
+        this.ball.vy *= 0.6;
+        this.createTeleportEffect(teleporter.x, teleporter.y);
+        this.createTeleportEffect(teleporter.targetX, teleporter.targetY);
+        this.playSound(1400, 0.4);
+        break;
+      }
+    }
+  }
+
+  checkStarCollisions() {
+    for (let star of this.level.stars) {
+      if (star.collected) continue;
       
-      ball.vx += pull * dx / dist;
-      ball.vy += pull * dy / dist;
-      ball.magnetized = true;
-      ball.charge = Math.min(ball.charge + 0.02, 1);
+      const distance = Math.hypot(this.ball.x - star.x, this.ball.y - star.y);
+      if (distance < this.ball.radius + 15) {
+        star.collected = true;
+        this.collectedStars++;
+        this.score += 200 * this.currentLevel;
+        this.createStarEffect(star.x, star.y);
+        this.playSound(1200, 0.3);
+        this.updateUI();
+        
+        if (this.collectedStars === this.level.stars.length) {
+          this.level.goal.active = true;
+          this.playSound(1600, 0.4);
+        }
+      }
+    }
+  }
+
+  checkGoalCollision() {
+    if (!this.level.goal.active) return;
+    
+    const distance = Math.hypot(this.ball.x - this.level.goal.x, this.ball.y - this.level.goal.y);
+    if (distance < this.ball.radius + this.level.goal.radius) {
+      this.completeLevel();
+    }
+  }
+
+  checkPowerUpCollisions() {
+    for (let powerUp of this.level.powerUps) {
+      if (!powerUp.active) continue;
       
-      // Drain energy
-      energy -= 0.3; // Reduced energy drain
-      energy = Math.max(0, energy);
-      
-      // Magnetic particles
-      if (Math.random() < 0.4) {
-        particles.push({
-          x: ball.x + (Math.random() - 0.5) * ball.radius,
-          y: ball.y + (Math.random() - 0.5) * ball.radius,
-          vx: (Math.random() - 0.5) * 2,
-          vy: (Math.random() - 0.5) * 2,
-          life: 30,
-          color: "cyan",
-          size: 2
+      const distance = Math.hypot(this.ball.x - powerUp.x, this.ball.y - powerUp.y);
+      if (distance < this.ball.radius + 20) {
+        powerUp.active = false;
+        this.activatePowerUp(powerUp.type);
+        this.createPowerUpEffect(powerUp.x, powerUp.y, powerUp.type);
+        this.playSound(1800, 0.3);
+      }
+    }
+  }
+
+  activatePowerUp(type) {
+    const durations = {
+      energy: 0,
+      speed: 900,
+      shield: 600,
+      magnet_boost: 750
+    };
+    
+    this.powerUp = { type, duration: durations[type] };
+    
+    if (type === 'energy') {
+      this.energy = this.maxEnergy;
+    }
+    
+    this.updateUI();
+  }
+
+  // Particle Effects System
+  createMagnetParticles() {
+    if (Math.random() > 0.7) {
+      for (let i = 0; i < 3; i++) {
+        this.particles.push({
+          x: this.ball.x + (Math.random() - 0.5) * 30,
+          y: this.ball.y + (Math.random() - 0.5) * 30,
+          vx: (Math.random() - 0.5) * 4,
+          vy: (Math.random() - 0.5) * 4,
+          life: 40,
+          maxLife: 40,
+          size: 2 + Math.random() * 3,
+          color: '#00ccff',
+          type: 'magnet'
         });
       }
     }
-  } else {
-    ball.magnetized = false;
-    ball.charge *= 0.95;
-  }
-  
-  // Speed boost effect
-  const speedMultiplier = 1 + (powerUps.speedBoost > 0 ? 0.15 : 0); // 15% speed boost when active
-
-  // Physics update
-  ball.x += ball.vx * speedMultiplier;
-  ball.y += ball.vy * speedMultiplier;
-  
-  // Friction
-  const friction = 0.985;
-  ball.vx *= friction;
-  ball.vy *= friction;
-
-  // Boundary collision
-  if (ball.x - ball.radius < 0 || ball.x + ball.radius > WIDTH) {
-    ball.vx *= -0.7;
-    ball.x = Math.max(ball.radius, Math.min(WIDTH - ball.radius, ball.x));
-  }
-  if (ball.y - ball.radius < 0 || ball.y + ball.radius > HEIGHT) {
-    ball.vy *= -0.7;
-    ball.y = Math.max(ball.radius, Math.min(HEIGHT - ball.radius, ball.y));
   }
 
-  // Wall collisions with enhanced physics
-  for (let w of walls) {
-    if (ballWallCollision(ball, w)) {
-      handleWallCollision(w);
+  createImpactParticles(x, y, color) {
+    for (let i = 0; i < 8; i++) {
+      this.particles.push({
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 12,
+        vy: (Math.random() - 0.5) * 12,
+        life: 35,
+        maxLife: 35,
+        size: 2 + Math.random() * 4,
+        color,
+        type: 'impact'
+      });
     }
   }
 
-  // Moving obstacle collisions
-  for (let obs of movingObstacles) {
-    if (ballRectCollision(ball, obs)) {
-      takeDamage();
-      // Bounce off
-      const centerX = obs.x + obs.w / 2;
-      const centerY = obs.y + obs.h / 2;
-      const dx = ball.x - centerX;
-      const dy = ball.y - centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 0) {
-        ball.vx += (dx / dist) * 8;
-        ball.vy += (dy / dist) * 8;
-      }
+  createStarEffect(x, y) {
+    for (let i = 0; i < 20; i++) {
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(i * Math.PI / 10) * 8,
+        vy: Math.sin(i * Math.PI / 10) * 8,
+        life: 60,
+        maxLife: 60,
+        size: 3 + Math.random() * 4,
+        color: '#ffdd00',
+        type: 'star'
+      });
     }
   }
 
-  // Spike collisions
-  if (ball.invulnerable <= 0) {
-    for (let spike of spikes) {
-      const dx = ball.x - spike.x;
-      const dy = ball.y - spike.y;
-      if (Math.hypot(dx, dy) < ball.radius + spike.radius) {
-        takeDamage();
-        // Knock back
-        const dist = Math.hypot(dx, dy);
-        if (dist > 0) {
-          ball.vx += (dx / dist) * 10;
-          ball.vy += (dy / dist) * 10;
-        }
-        break;
-      }
+  createTeleportEffect(x, y) {
+    for (let i = 0; i < 30; i++) {
+      this.particles.push({
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 15,
+        vy: (Math.random() - 0.5) * 15,
+        life: 50,
+        maxLife: 50,
+        size: 2 + Math.random() * 5,
+        color: '#ff00ff',
+        type: 'teleport'
+      });
     }
   }
 
-  // Star collection
-  for (let star of stars) {
-    if (star.collected) continue;
-    const dx = ball.x - star.x;
-    const dy = ball.y - star.y;
-    if (Math.hypot(dx, dy) < ball.radius + 12) {
-      collectStar(star);
+  createPowerUpEffect(x, y, type) {
+    const colors = {
+      energy: '#00ff00',
+      speed: '#ff00ff',
+      shield: '#ffffff',
+      magnet_boost: '#00ffff'
+    };
+    
+    for (let i = 0; i < 25; i++) {
+      this.particles.push({
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 10,
+        vy: (Math.random() - 0.5) * 10,
+        life: 55,
+        maxLife: 55,
+        size: 3 + Math.random() * 4,
+        color: colors[type],
+        type: 'powerup'
+      });
     }
   }
 
-  // Goal detection
-  const goalDist = Math.hypot(ball.x - goal.x, ball.y - goal.y);
-  if (goalDist < ball.radius + goal.radius) {
-    if (collectedCount === stars.length) {
-      victory();
+  createBlackHoleEffect(x, y) {
+    for (let i = 0; i < 40; i++) {
+      this.particles.push({
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 8,
+        vy: (Math.random() - 0.5) * 8,
+        life: 70,
+        maxLife: 70,
+        size: 2 + Math.random() * 6,
+        color: '#440044',
+        type: 'blackhole'
+      });
     }
   }
 
-  // Update ball trail
-  ball.trail.push({ x: ball.x, y: ball.y });
-  if (ball.trail.length > 20) {
-    ball.trail.shift();
+  updateParticles() {
+    this.particles = this.particles.filter(particle => {
+      particle.x += particle.vx;
+      particle.y += particle.vy;
+      particle.life--;
+      particle.vx *= 0.95;
+      particle.vy *= 0.95;
+      return particle.life > 0;
+    });
   }
 
-  // Update power-up timers
-  if (ball.invulnerable > 0) ball.invulnerable--;
-  if (powerUps.speedBoost > 0) powerUps.speedBoost--;
-  if (powerUps.shield > 0) powerUps.shield--;
-  if (powerUps.superMagnet > 0) {
-    powerUps.superMagnet--;
-    if (powerUps.superMagnet <= 0) {
-      mouse.magnetStrength = 1; // Reset magnet strength when power-up ends
-    }
+  // Enhanced Rendering System
+  render() {
+    this.ctx.clearRect(0, 0, this.WIDTH, this.HEIGHT);
+    
+    this.drawBackground();
+    this.drawMagneticField();
+    this.drawGameObjects();
+    this.drawParticles();
+    this.drawBall();
   }
-  
-  // Energy regeneration
-  if (!mouse.active) {
-    energy += 0.2;
-    energy = Math.min(100, energy);
-  }
-}
 
-function ballWallCollision(ball, wall) {
-  return ball.x + ball.radius > wall.x &&
-         ball.x - ball.radius < wall.x + wall.w &&
-         ball.y + ball.radius > wall.y &&
-         ball.y - ball.radius < wall.y + wall.h;
-}
-
-function ballRectCollision(ball, rect) {
-  return ball.x + ball.radius > rect.x &&
-         ball.x - ball.radius < rect.x + rect.w &&
-         ball.y + ball.radius > rect.y &&
-         ball.y - ball.radius < rect.y + rect.h;
-}
-
-function handleWallCollision(wall) {
-  // Enhanced collision response based on wall type
-  const bounce = wall.type === 'normal' ? 0.6 : 0.8;
-  
-  switch (wall.type) {
-    case 'magnetic':
-      // Magnetic walls attract the ball
-      const centerX = wall.x + wall.w / 2;
-      const centerY = wall.y + wall.h / 2;
-      const dx = centerX - ball.x;
-      const dy = centerY - ball.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 0) {
-        ball.vx += (dx / dist) * 0.5;
-        ball.vy += (dy / dist) * 0.5;
-      }
-      break;
+  drawBackground() {
+    // Space gradient
+    const gradient = this.ctx.createRadialGradient(
+      this.WIDTH / 2, this.HEIGHT / 2, 0,
+      this.WIDTH / 2, this.HEIGHT / 2, Math.max(this.WIDTH, this.HEIGHT)
+    );
+    gradient.addColorStop(0, '#001a33');
+    gradient.addColorStop(0.5, '#000d1a');
+    gradient.addColorStop(1, '#000511');
+    
+    this.ctx.fillStyle = gradient;
+    this.ctx.fillRect(0, 0, this.WIDTH, this.HEIGHT);
+    
+    // Background stars
+    for (let star of this.backgroundStars) {
+      const twinkle = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(Date.now() / 1000 * star.twinkleSpeed));
+      this.ctx.fillStyle = `rgba(255, 255, 255, ${twinkle * star.brightness})`;
+      this.ctx.beginPath();
+      this.ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+      this.ctx.fill();
       
-    case 'repulsive':
-      // Repulsive walls push the ball away
-      const repCenterX = wall.x + wall.w / 2;
-      const repCenterY = wall.y + wall.h / 2;
-      const repDx = ball.x - repCenterX;
-      const repDy = ball.y - repCenterY;
-      const repDist = Math.sqrt(repDx * repDx + repDy * repDy);
-      if (repDist > 0) {
-        ball.vx += (repDx / repDist) * 3;
-        ball.vy += (repDy / repDist) * 3;
+      // Parallax scrolling
+      star.x = (star.x + 0.02 * star.size) % this.WIDTH;
+    }
+  }
+
+  drawMagneticField() {
+    if (!this.mouse.active || this.energy <= 0) return;
+    
+    const time = Date.now() / 1000;
+    const pulseRadius = 60 + 20 * Math.sin(time * 5);
+    
+    // Main field
+    const gradient = this.ctx.createRadialGradient(
+      this.mouse.x, this.mouse.y, 0,
+      this.mouse.x, this.mouse.y, pulseRadius
+    );
+    gradient.addColorStop(0, 'rgba(0, 204, 255, 0.2)');
+    gradient.addColorStop(0.7, 'rgba(0, 204, 255, 0.1)');
+    gradient.addColorStop(1, 'rgba(0, 204, 255, 0)');
+    
+    this.ctx.fillStyle = gradient;
+    this.ctx.beginPath();
+    this.ctx.arc(this.mouse.x, this.mouse.y, pulseRadius, 0, Math.PI * 2);
+    this.ctx.fill();
+    
+    // Field lines
+    for (let i = 0; i < 16; i++) {
+      const angle = (i / 16) * Math.PI * 2 + time;
+      const x = this.mouse.x + Math.cos(angle) * pulseRadius * 0.8;
+      const y = this.mouse.y + Math.sin(angle) * pulseRadius * 0.8;
+      
+      this.ctx.strokeStyle = `rgba(0, 204, 255, ${0.3 + 0.2 * Math.sin(time * 3 + i)})`;
+      this.ctx.lineWidth = 1.5;
+      this.ctx.beginPath();
+      this.ctx.moveTo(this.mouse.x, this.mouse.y);
+      this.ctx.lineTo(x, y);
+      this.ctx.stroke();
+    }
+  }
+
+  drawGameObjects() {
+    this.drawWalls();
+    this.drawSpikes();
+    this.drawBlackHoles();
+    this.drawTeleporters();
+    this.drawStars();
+    this.drawGoal();
+    this.drawPowerUps();
+  }
+
+  drawWalls() {
+    for (let wall of this.level.walls) {
+      if (wall.type === 'magnetic') {
+        const gradient = this.ctx.createLinearGradient(wall.x, wall.y, wall.x + wall.w, wall.y + wall.h);
+        gradient.addColorStop(0, '#001a33');
+        gradient.addColorStop(0.5, '#0033aa');
+        gradient.addColorStop(1, '#001a33');
+        this.ctx.fillStyle = gradient;
+        
+        this.ctx.shadowColor = '#00aaff';
+        this.ctx.shadowBlur = 15;
+      } else {
+        this.ctx.fillStyle = '#2a2a3a';
+        this.ctx.shadowBlur = 0;
       }
-      break;
+      
+      this.ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
+      
+      this.ctx.strokeStyle = wall.type === 'magnetic' ? '#00ccff' : '#666666';
+      this.ctx.lineWidth = 2;
+      this.ctx.strokeRect(wall.x, wall.y, wall.w, wall.h);
+    }
+    this.ctx.shadowBlur = 0;
   }
 
-  // Standard bounce physics
-  if (ball.x < wall.x || ball.x > wall.x + wall.w) {
-    ball.vx *= -bounce;
-  }
-  if (ball.y < wall.y || ball.y > wall.y + wall.h) {
-    ball.vy *= -bounce;
+  drawSpikes() {
+    for (let spike of this.level.spikes) {
+      this.ctx.save();
+      this.ctx.translate(spike.x, spike.y);
+      this.ctx.rotate(spike.rotation + Date.now() / 2000);
+      
+      const gradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, spike.size);
+      gradient.addColorStop(0, '#ff6666');
+      gradient.addColorStop(1, '#ff0000');
+      
+      this.ctx.fillStyle = gradient;
+      this.ctx.strokeStyle = '#ffaaaa';
+      this.ctx.lineWidth = 2;
+      
+      this.ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2;
+        const radius = i % 2 === 0 ? spike.size : spike.size * 0.4;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        
+        if (i === 0) this.ctx.moveTo(x, y);
+        else this.ctx.lineTo(x, y);
+      }
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.stroke();
+      
+      this.ctx.restore();
+    }
   }
 
-  // Create sparks on collision
-  for (let i = 0; i < 5; i++) {
-    sparks.push({
-      x: ball.x,
-      y: ball.y,
-      vx: (Math.random() - 0.5) * 6,
-      vy: (Math.random() - 0.5) * 6,
-      life: 20,
-      color: wall.type === 'magnetic' ? '#0066ff' : wall.type === 'repulsive' ? '#ff6600' : '#ffffff'
+  drawBlackHoles() {
+    for (let blackHole of this.level.blackHoles) {
+      blackHole.rotation += 0.05;
+      
+      // Accretion disk
+      for (let i = 0; i < 3; i++) {
+        const radius = blackHole.radius + i * 15;
+        const gradient = this.ctx.createRadialGradient(
+          blackHole.x, blackHole.y, radius * 0.3,
+          blackHole.x, blackHole.y, radius
+        );
+        gradient.addColorStop(0, `rgba(66, 0, 66, ${0.8 - i * 0.2})`);
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        
+        this.ctx.fillStyle = gradient;
+        this.ctx.beginPath();
+        this.ctx.arc(blackHole.x, blackHole.y, radius, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+      
+      // Event horizon
+      this.ctx.fillStyle = '#000000';
+      this.ctx.beginPath();
+      this.ctx.arc(blackHole.x, blackHole.y, blackHole.radius, 0, Math.PI * 2);
+      this.ctx.fill();
+      
+      // Edge glow
+      this.ctx.strokeStyle = '#440044';
+      this.ctx.lineWidth = 3;
+      this.ctx.beginPath();
+      this.ctx.arc(blackHole.x, blackHole.y, blackHole.radius + 2, 0, Math.PI * 2);
+      this.ctx.stroke();
+    }
+  }
+
+  drawTeleporters() {
+    for (let teleporter of this.level.teleporters) {
+      teleporter.pulsePhase += 0.1;
+      const pulse = 0.7 + 0.3 * Math.sin(teleporter.pulsePhase);
+      
+      // Portal effect
+      const gradient = this.ctx.createRadialGradient(
+        teleporter.x, teleporter.y, 0,
+        teleporter.x, teleporter.y, teleporter.radius * 1.5
+      );
+      gradient.addColorStop(0, `rgba(255, 0, 255, ${pulse * 0.8})`);
+      gradient.addColorStop(0.7, `rgba(255, 0, 255, ${pulse * 0.4})`);
+      gradient.addColorStop(1, 'rgba(255, 0, 255, 0)');
+      
+      this.ctx.fillStyle = gradient;
+      this.ctx.beginPath();
+      this.ctx.arc(teleporter.x, teleporter.y, teleporter.radius * 1.5, 0, Math.PI * 2);
+      this.ctx.fill();
+      
+      // Inner portal
+      this.ctx.fillStyle = teleporter.color;
+      this.ctx.globalAlpha = pulse;
+      this.ctx.beginPath();
+      this.ctx.arc(teleporter.x, teleporter.y, teleporter.radius, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.globalAlpha = 1;
+      
+      // Portal ring
+      this.ctx.strokeStyle = teleporter.color;
+      this.ctx.lineWidth = 3;
+      this.ctx.beginPath();
+      this.ctx.arc(teleporter.x, teleporter.y, teleporter.radius + 8, 0, Math.PI * 2);
+      this.ctx.stroke();
+    }
+  }
+
+  drawStars() {
+    for (let star of this.level.stars) {
+      if (star.collected) continue;
+      
+      star.rotation += 0.03;
+      star.pulsePhase += 0.08;
+      const pulse = 0.8 + 0.2 * Math.sin(star.pulsePhase);
+      
+      this.ctx.save();
+      this.ctx.translate(star.x, star.y);
+      this.ctx.rotate(star.rotation);
+      this.ctx.scale(pulse, pulse);
+      
+      // Star glow
+      const gradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 25);
+      gradient.addColorStop(0, 'rgba(255, 221, 0, 0.8)');
+      gradient.addColorStop(1, 'rgba(255, 221, 0, 0)');
+      
+      this.ctx.fillStyle = gradient;
+      this.ctx.beginPath();
+      this.ctx.arc(0, 0, 25, 0, Math.PI * 2);
+      this.ctx.fill();
+      
+      // Star shape
+      this.ctx.fillStyle = '#ffdd00';
+      this.ctx.strokeStyle = '#ffaa00';
+      this.ctx.lineWidth = 2;
+      
+      this.ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const angle = (i * 4 * Math.PI) / 5;
+        const x = Math.cos(angle) * 16;
+        const y = Math.sin(angle) * 16;
+        if (i === 0) this.ctx.moveTo(x, y);
+        else this.ctx.lineTo(x, y);
+      }
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.stroke();
+      
+      this.ctx.restore();
+    }
+  }
+
+  drawGoal() {
+    this.level.goal.pulsePhase += 0.12;
+    const active = this.level.goal.active;
+    const pulse = active ? 0.6 + 0.4 * Math.sin(this.level.goal.pulsePhase) : 0.3;
+    
+    if (active) {
+      // Goal glow
+      const gradient = this.ctx.createRadialGradient(
+        this.level.goal.x, this.level.goal.y, 0,
+        this.level.goal.x, this.level.goal.y, this.level.goal.radius * 2
+      );
+      gradient.addColorStop(0, `rgba(0, 255, 0, ${pulse * 0.6})`);
+      gradient.addColorStop(1, 'rgba(0, 255, 0, 0)');
+      
+      this.ctx.fillStyle = gradient;
+      this.ctx.beginPath();
+      this.ctx.arc(this.level.goal.x, this.level.goal.y, this.level.goal.radius * 2, 0, Math.PI * 2);
+      this.ctx.fill();
+      
+      // Swirling energy
+      this.ctx.strokeStyle = '#00ff00';
+      this.ctx.lineWidth = 3;
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2 + this.level.goal.pulsePhase;
+        const innerRadius = this.level.goal.radius * 0.6;
+        const outerRadius = this.level.goal.radius * 1.2;
+        
+        this.ctx.beginPath();
+        this.ctx.arc(this.level.goal.x, this.level.goal.y, innerRadius + (outerRadius - innerRadius) * (i / 8), 
+                    angle, angle + Math.PI / 6);
+        this.ctx.stroke();
+      }
+    }
+    
+    // Main portal
+    this.ctx.fillStyle = active ? '#00ff00' : '#333333';
+    this.ctx.globalAlpha = pulse;
+    this.ctx.beginPath();
+    this.ctx.arc(this.level.goal.x, this.level.goal.y, this.level.goal.radius, 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.globalAlpha = 1;
+    
+    if (active) {
+      this.ctx.strokeStyle = '#00ff00';
+      this.ctx.lineWidth = 4;
+      this.ctx.beginPath();
+      this.ctx.arc(this.level.goal.x, this.level.goal.y, this.level.goal.radius + 8, 0, Math.PI * 2);
+      this.ctx.stroke();
+    }
+  }
+
+  drawPowerUps() {
+    const powerUpColors = {
+      energy: '#00ff00',
+      speed: '#ff00ff',
+      shield: '#ffffff',
+      magnet_boost: '#00ffff'
+    };
+    
+    for (let powerUp of this.level.powerUps) {
+      if (!powerUp.active) continue;
+      
+      powerUp.rotation += 0.05;
+      powerUp.pulsePhase += 0.1;
+      const pulse = 0.7 + 0.3 * Math.sin(powerUp.pulsePhase);
+      
+      this.ctx.save();
+      this.ctx.translate(powerUp.x, powerUp.y);
+      this.ctx.rotate(powerUp.rotation);
+      this.ctx.scale(pulse, pulse);
+      
+      // Power-up glow
+      const gradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 30);
+      const color = powerUpColors[powerUp.type];
+      gradient.addColorStop(0, color.replace(')', ', 0.6)').replace('rgb', 'rgba'));
+      gradient.addColorStop(1, color.replace(')', ', 0)').replace('rgb', 'rgba'));
+      
+      this.ctx.fillStyle = gradient;
+      this.ctx.beginPath();
+      this.ctx.arc(0, 0, 30, 0, Math.PI * 2);
+      this.ctx.fill();
+      
+      // Power-up icon
+      this.ctx.fillStyle = color;
+      this.ctx.beginPath();
+      this.ctx.arc(0, 0, 18, 0, Math.PI * 2);
+      this.ctx.fill();
+      
+      this.ctx.strokeStyle = color;
+      this.ctx.lineWidth = 3;
+      this.ctx.beginPath();
+      this.ctx.arc(0, 0, 22, 0, Math.PI * 2);
+      this.ctx.stroke();
+      
+      this.ctx.restore();
+    }
+  }
+
+  drawBall() {
+    // Ball trail
+    for (let i = 0; i < this.ball.trail.length; i++) {
+      const alpha = (i / this.ball.trail.length) * 0.5;
+      const size = (i / this.ball.trail.length) * this.ball.radius;
+      
+      this.ctx.globalAlpha = alpha;
+      this.ctx.fillStyle = this.ball.magnetized ? '#00ccff' : '#4488aa';
+      this.ctx.beginPath();
+      this.ctx.arc(this.ball.trail[i].x, this.ball.trail[i].y, size, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    this.ctx.globalAlpha = 1;
+    
+    // Ball glow
+    if (this.ball.magnetized || this.ball.glowIntensity > 0) {
+      const glowRadius = this.ball.radius * (2 + this.ball.glowIntensity);
+      const gradient = this.ctx.createRadialGradient(
+        this.ball.x, this.ball.y, 0,
+        this.ball.x, this.ball.y, glowRadius
+      );
+      gradient.addColorStop(0, `rgba(0, 204, 255, ${this.ball.glowIntensity * 0.4})`);
+      gradient.addColorStop(1, 'rgba(0, 204, 255, 0)');
+      
+      this.ctx.fillStyle = gradient;
+      this.ctx.beginPath();
+      this.ctx.arc(this.ball.x, this.ball.y, glowRadius, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    
+    // Main ball
+    const gradient = this.ctx.createRadialGradient(
+      this.ball.x - 5, this.ball.y - 5, 0,
+      this.ball.x, this.ball.y, this.ball.radius
+    );
+    gradient.addColorStop(0, this.ball.magnetized ? '#ffffff' : '#ccddff');
+    gradient.addColorStop(1, this.ball.magnetized ? '#0088ff' : '#4488aa');
+    
+    this.ctx.fillStyle = gradient;
+    this.ctx.beginPath();
+    this.ctx.arc(this.ball.x, this.ball.y, this.ball.radius, 0, Math.PI * 2);
+    this.ctx.fill();
+    
+    // Power-up effects
+    if (this.powerUp) {
+      const effectColors = {
+        speed: '#ff00ff',
+        shield: '#ffffff',
+        magnet_boost: '#00ffff'
+      };
+      
+      if (effectColors[this.powerUp.type]) {
+        this.ctx.strokeStyle = effectColors[this.powerUp.type];
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.arc(this.ball.x, this.ball.y, this.ball.radius + 8, 0, Math.PI * 2);
+        this.ctx.stroke();
+      }
+    }
+    
+    // Invulnerability flash
+    if (this.ball.invulnerable > 0 && Math.floor(this.ball.invulnerable / 8) % 2) {
+      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      this.ctx.beginPath();
+      this.ctx.arc(this.ball.x, this.ball.y, this.ball.radius + 5, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+  }
+
+  drawParticles() {
+    for (let particle of this.particles) {
+      const alpha = particle.life / particle.maxLife;
+      const size = particle.size * (0.5 + 0.5 * alpha);
+      
+      this.ctx.globalAlpha = alpha;
+      this.ctx.fillStyle = particle.color;
+      this.ctx.beginPath();
+      this.ctx.arc(particle.x, particle.y, size, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    this.ctx.globalAlpha = 1;
+  }
+
+  // Audio System
+  playSound(frequency, duration, type = 'sine', volume = 0.1) {
+    if (!this.audioContext) return;
+    
+    try {
+      const oscillator = this.audioContext.createOscillator();
+      const gainNode = this.audioContext.createGain();
+      
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
+      
+      gainNode.gain.setValueAtTime(volume, this.audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
+      
+      oscillator.start();
+      oscillator.stop(this.audioContext.currentTime + duration);
+    } catch (e) {
+      console.warn('Audio playback failed:', e);
+    }
+  }
+
+  // Game Logic
+  loseLife() {
+    this.lives--;
+    this.ball.invulnerable = 180;
+    this.ball.x = 80;
+    this.ball.y = 80;
+    this.ball.vx = 0;
+    this.ball.vy = 0;
+    this.powerUp = null;
+    this.energy = this.maxEnergy;
+    
+    this.createImpactParticles(this.ball.x, this.ball.y, '#ff4444');
+    this.playSound(250, 0.5, 'sawtooth', 0.15);
+    
+    if (this.lives <= 0) {
+      this.gameOver();
+    } else {
+      this.updateUI();
+    }
+  }
+
+  completeLevel() {
+    this.gameState = 'levelComplete';
+    const energyBonus = Math.floor(this.energy * 5);
+    const timeBonus = Math.max(0, 1000 - (Date.now() - this.levelStartTime) / 1000) * 2;
+    const totalBonus = energyBonus + timeBonus;
+    this.score += totalBonus;
+    
+    document.getElementById('finalStars').textContent = this.collectedStars;
+    document.getElementById('bonusScore').textContent = totalBonus;
+    document.getElementById('levelCompleteModal').style.display = 'flex';
+    
+    this.playSound(2000, 0.6, 'sine', 0.2);
+    
+    this.updateUI();
+  }
+
+  nextLevel() {
+    document.getElementById('levelCompleteModal').style.display = 'none';
+    
+    if (this.currentLevel >= 15) {
+      this.victory();
+      return;
+    }
+    
+    this.loadLevel(this.currentLevel + 1);
+    this.levelStartTime = Date.now();
+  }
+
+  gameOver() {
+    this.gameState = 'gameOver';
+    document.getElementById('finalScore').textContent = this.score;
+    document.getElementById('levelsCompleted').textContent = this.currentLevel - 1;
+    document.getElementById('gameOverModal').style.display = 'flex';
+    
+    this.playSound(150, 1.0, 'sawtooth', 0.2);
+  }
+
+  victory() {
+    this.gameState = 'victory';
+    document.getElementById('totalScore').textContent = this.score;
+    document.getElementById('victoryModal').style.display = 'flex';
+    
+    // Victory fanfare
+    this.playSound(523, 0.3);
+    setTimeout(() => this.playSound(659, 0.3), 300);
+    setTimeout(() => this.playSound(784, 0.3), 600);
+    setTimeout(() => this.playSound(1047, 0.6), 900);
+  }
+
+  restartGame() {
+    document.getElementById('gameOverModal').style.display = 'none';
+    document.getElementById('victoryModal').style.display = 'none';
+    
+    this.currentLevel = 1;
+    this.score = 0;
+    this.lives = 3;
+    this.loadLevel(1);
+    this.levelStartTime = Date.now();
+  }
+
+  updateUI() {
+    document.getElementById('level').textContent = this.currentLevel;
+    document.getElementById('stars').textContent = this.collectedStars;
+    document.getElementById('totalStars').textContent = this.level.stars.length;
+    document.getElementById('score').textContent = this.score;
+    document.getElementById('lives').textContent = this.lives;
+    document.getElementById('energyPercent').textContent = Math.floor(this.energy) + '%';
+    document.getElementById('energyFill').style.width = (this.energy / this.maxEnergy) * 100 + '%';
+    
+    const powerUpNames = {
+      energy: 'Energy Boost',
+      speed: 'Speed Boost',
+      shield: 'Force Shield',
+      magnet_boost: 'Magnet Amplifier'
+    };
+    
+    document.getElementById('powerUpStatus').textContent = 
+      this.powerUp ? powerUpNames[this.powerUp.type] : 'None';
+  }
+
+  setupEventListeners() {
+    // Mouse controls
+    this.canvas.addEventListener('mousedown', (e) => {
+      if (this.gameState !== 'playing') return;
+      
+      this.mouse.x = e.clientX;
+      this.mouse.y = e.clientY;
+      this.mouse.active = true;
+      this.playSound(800, 0.1);
+    });
+
+    this.canvas.addEventListener('mousemove', (e) => {
+      this.mouse.x = e.clientX;
+      this.mouse.y = e.clientY;
+    });
+
+    this.canvas.addEventListener('mouseup', () => {
+      this.mouse.active = false;
+      this.playSound(600, 0.1);
+    });
+
+    // Touch controls
+    this.canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (this.gameState !== 'playing') return;
+      
+      const touch = e.touches[0];
+      this.mouse.x = touch.clientX;
+      this.mouse.y = touch.clientY;
+      this.mouse.active = true;
+      this.playSound(800, 0.1);
+    });
+
+    this.canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      this.mouse.x = touch.clientX;
+      this.mouse.y = touch.clientY;
+    });
+
+    this.canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      this.mouse.active = false;
+      this.playSound(600, 0.1);
+    });
+
+    // Keyboard controls
+    document.addEventListener('keydown', (e) => {
+      switch(e.key) {
+        case 'r':
+        case 'R':
+          if (this.gameState === 'playing') {
+            this.restartGame();
+          }
+          break;
+        case 'h':
+        case 'H':
+          togglePanel('instructionsPanel');
+          break;
+        case 'u':
+        case 'U':
+          togglePanel('gameUI');
+          break;
+        case 'Escape':
+          // Pause functionality could be added here
+          break;
+      }
+    });
+
+    // Prevent context menu on canvas
+    this.canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
     });
   }
-}
 
-function collectStar(star) {
-  star.collected = true;
-  collectedCount++;
-  document.getElementById('stars').textContent = collectedCount;
-
-  // Apply power-up effects with reduced intensity
-  switch (star.type) {
-    case 'speed':
-      powerUps.speedBoost = 120; // 2 seconds at 60fps
-      break;
-    case 'shield':
-      powerUps.shield = 90; // 1.5 seconds
-      ball.invulnerable = 90;
-      break;
-    case 'energy':
-      energy = Math.min(energy + 40, 100); // Add 40% energy instead of full restore
-      powerUps.energyBoost = true;
-      break;
-    case 'magnet':
-      powerUps.superMagnet = 120; // 2 seconds
-      mouse.magnetStrength = 1.3; // 30% boost instead of 100%
-      break;
-  }
-
-  // Collection effects
-  for (let i = 0; i < 15; i++) {
-    particles.push({
-      x: star.x,
-      y: star.y,
-      vx: (Math.random() - 0.5) * 8,
-      vy: (Math.random() - 0.5) * 8,
-      life: 40,
-      color: star.color,
-      size: 3
-    });
-  }
-}
-
-function takeDamage() {
-  if (ball.invulnerable > 0 || powerUps.shield > 0) return;
-  
-  lives--;
-  document.getElementById('lives').textContent = lives;
-  ball.invulnerable = 120; // 2 seconds of invulnerability
-  
-  // Damage effects
-  for (let i = 0; i < 20; i++) {
-    sparks.push({
-      x: ball.x,
-      y: ball.y,
-      vx: (Math.random() - 0.5) * 10,
-      vy: (Math.random() - 0.5) * 10,
-      life: 30,
-      color: '#ff0000'
-    });
-  }
-  
-  if (lives <= 0) {
-    gameOver();
-  }
-}
-
-function updateMovingObstacles() {
-  for (let obs of movingObstacles) {
-    obs.x += obs.vx;
-    obs.y += obs.vy;
+  // Main Game Loop
+  gameLoop(timestamp) {
+    this.updateBall();
+    this.updateParticles();
+    this.render();
     
-    // Bounce within range
-    if (obs.x <= obs.startX - obs.range || obs.x >= obs.startX + obs.range) {
-      obs.vx *= -1;
-    }
+    requestAnimationFrame((timestamp) => this.gameLoop(timestamp));
+  }
+
+  start() {
+    this.levelStartTime = Date.now();
+    this.gameLoop();
   }
 }
 
-function updateParticles() {
-  // Update regular particles
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vx *= 0.98;
-    p.vy *= 0.98;
-    p.life--;
-    
-    if (p.life <= 0) {
-      particles.splice(i, 1);
-    }
-  }
-  
-  // Update sparks
-  for (let i = sparks.length - 1; i >= 0; i--) {
-    const s = sparks[i];
-    s.x += s.vx;
-    s.y += s.vy;
-    s.vx *= 0.95;
-    s.vy *= 0.95;
-    s.life--;
-    
-    if (s.life <= 0) {
-      sparks.splice(i, 1);
-    }
-  }
-  
-  // Update energy orbs
-  for (let i = energyOrbs.length - 1; i >= 0; i--) {
-    const orb = energyOrbs[i];
-    orb.angle += 0.2;
-    orb.x = mouse.x + Math.cos(orb.angle) * 30;
-    orb.y = mouse.y + Math.sin(orb.angle) * 30;
-    orb.life--;
-    
-    if (orb.life <= 0) {
-      energyOrbs.splice(i, 1);
-    }
-  }
-}
-
-function drawParticles() {
-  // Draw regular particles
-  for (let p of particles) {
-    const alpha = p.life / 40;
-    ctx.fillStyle = p.color;
-    ctx.globalAlpha = alpha;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  
-  // Draw sparks
-  for (let s of sparks) {
-    const alpha = s.life / 30;
-    ctx.strokeStyle = s.color;
-    ctx.globalAlpha = alpha;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(s.x, s.y);
-    ctx.lineTo(s.x - s.vx, s.y - s.vy);
-    ctx.stroke();
-  }
-  
-  // Draw energy orbs
-  for (let orb of energyOrbs) {
-    const alpha = orb.life / 20;
-    ctx.fillStyle = "#00ffff";
-    ctx.globalAlpha = alpha;
-    ctx.beginPath();
-    ctx.arc(orb.x, orb.y, orb.radius, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  
-  ctx.globalAlpha = 1;
-}
-
-function drawBackground() {
-  // Animated background
-  const gradient = ctx.createRadialGradient(WIDTH/2, HEIGHT/2, 0, WIDTH/2, HEIGHT/2, Math.max(WIDTH, HEIGHT));
-  gradient.addColorStop(0, "#001122");
-  gradient.addColorStop(0.5, "#000811");
-  gradient.addColorStop(1, "#000000");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
-  
-  // Background stars
-  ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-  for (let i = 0; i < 100; i++) {
-    const x = (i * 37) % WIDTH;
-    const y = (i * 73) % HEIGHT;
-    const size = Math.sin(Date.now() / 1000 + i) * 0.5 + 1;
-    ctx.beginPath();
-    ctx.arc(x, y, size, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-function drawPowerUpIndicators() {
-  const startY = HEIGHT - 60;
-  let x = 20;
-  
-  if (powerUps.speedBoost > 0) {
-    ctx.fillStyle = "#ffff00";
-    ctx.fillRect(x, startY, 40, 10);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "12px Arial";
-    ctx.fillText("⚡", x + 5, startY - 5);
-    x += 50;
-  }
-  
-  if (powerUps.shield > 0) {
-    ctx.fillStyle = "#00ffff";
-    ctx.fillRect(x, startY, 40, 10);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "12px Arial";
-    ctx.fillText("🛡️", x + 5, startY - 5);
-    x += 50;
-  }
-  
-  if (powerUps.superMagnet > 0) {
-    ctx.fillStyle = "#ff8800";
-    ctx.fillRect(x, startY, 40, 10);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "12px Arial";
-    ctx.fillText("🧲", x + 5, startY - 5);
-    x += 50;
-  }
-}
-
-function drawEnergyBar() {
-  const barWidth = 200;
-  const barHeight = 10;
-  const x = WIDTH - barWidth - 20;
-  const y = 20;
-  
-  // Background
-  ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-  ctx.fillRect(x - 5, y - 5, barWidth + 10, barHeight + 10);
-  
-  // Energy bar background
-  ctx.fillStyle = "#333";
-  ctx.fillRect(x, y, barWidth, barHeight);
-  
-  // Energy bar fill
-  const energyWidth = (energy / 100) * barWidth;
-  const gradient = ctx.createLinearGradient(x, y, x + barWidth, y);
-  gradient.addColorStop(0, "#ff0000");
-  gradient.addColorStop(0.5, "#ffff00");
-  gradient.addColorStop(1, "#00ff00");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(x, y, energyWidth, barHeight);
-  
-  // Border
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x, y, barWidth, barHeight);
-  
-  // Update UI
-  document.getElementById('energy').textContent = Math.floor(energy);
-}
-
-function gameOver() {
-  gameState = 'gameOver';
-  document.getElementById('gameOver').style.display = 'block';
-}
-
-function victory() {
-  gameState = 'victory';
-  document.getElementById('finalTime').textContent = Math.floor(gameTime);
-  document.getElementById('victory').style.display = 'block';
+// Global Functions for HTML interaction
+function nextLevel() {
+  game.nextLevel();
 }
 
 function restartGame() {
-  // Reset game state
-  gameState = 'playing';
-  lives = 3;
-  energy = 100;
-  gameTime = 0;
-  collectedCount = 0;
-  lastTime = Date.now();
-  
-  // Reset ball
-  ball = {
-    x: 80, y: 80,
-    vx: 0, vy: 0,
-    radius: 14,
-    color: "#e0e0e0",
-    trail: [],
-    magnetized: false,
-    invulnerable: 0,
-    metallic: true,
-    charge: 0
-  };
-  
-  // Reset stars
-  for (let star of stars) {
-    star.collected = false;
-  }
-  
-  // Reset power-ups
-  powerUps = {
-    speedBoost: 0,
-    shield: 0,
-    energyBoost: false,
-    superMagnet: 0
-  };
-  
-  // Reset mouse
-  mouse.magnetStrength = 1;
-  
-  // Clear particles
-  particles = [];
-  sparks = [];
-  energyOrbs = [];
-  
-  // Hide UI panels
-  document.getElementById('gameOver').style.display = 'none';
-  document.getElementById('victory').style.display = 'none';
-  
-  // Update UI
-  document.getElementById('stars').textContent = '0';
-  document.getElementById('lives').textContent = '3';
-  document.getElementById('time').textContent = '0';
-  document.getElementById('energy').textContent = '100';
+  game.restartGame();
 }
 
-function nextLevel() {
-  level++;
-  
-  // Add more challenging elements for next level
-  if (level === 2) {
-    // Add more spikes
-    spikes.push(
-      { x: 250, y: 150, radius: 15, damage: 1 },
-      { x: 550, y: 250, radius: 15, damage: 1 }
-    );
-    
-    // Add more moving obstacles
-    movingObstacles.push(
-      { x: 300, y: 100, vx: 0, vy: 3, w: 15, h: 80, range: 150, startY: 100 }
-    );
-    
-    // Move goal
-    goal.x = 200;
-    goal.y = 500;
-  }
-  
-  restartGame();
-}
+// Initialize and start the game
+const game = new CosmicGame();
+game.start();
 
-function gameLoop() {
-  if (gameState === 'playing') {
-    updateGameTime();
-    updateBall();
-    updateMovingObstacles();
-    updateParticles();
+// Initialize audio context on first user interaction
+document.addEventListener('click', () => {
+  if (game.audioContext && game.audioContext.state === 'suspended') {
+    game.audioContext.resume();
   }
-  
-  // Draw everything
-  drawBackground();
-  drawMagnetField();
-  drawGoal();
-  drawWalls();
-  drawSpikes();
-  drawMovingObstacles();
-  drawStars();
-  drawBall();
-  drawParticles();
-  drawPowerUpIndicators();
-  drawEnergyBar();
-  
-  requestAnimationFrame(gameLoop);
-}
-
-// Start the game
-gameLoop();
+}, { once: true });
